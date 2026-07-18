@@ -1,8 +1,10 @@
 import SwiftUI
 import CoreGraphics
+import AppKit
 
 struct DisplayPopoverView: View {
     @EnvironmentObject private var manager: DisplayManager
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         ScrollView {
@@ -34,7 +36,7 @@ struct DisplayPopoverView: View {
                 }
 
                 HStack(spacing: 10) {
-                    SettingsLink {
+                    Button { showSettingsInFront() } label: {
                         Label("偏好设置", systemImage: "gearshape.fill")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 9)
@@ -62,6 +64,20 @@ struct DisplayPopoverView: View {
             set: { if !$0 { manager.lastError = nil } }
         )) { Button("好") { manager.lastError = nil } } message: {
             Text(manager.lastError ?? "")
+        }
+    }
+
+    private func showSettingsInFront() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        openSettings()
+
+        // SwiftUI may create the Settings window one run-loop pass after the
+        // action. Activate again and explicitly raise the titled window.
+        DispatchQueue.main.async {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            NSApplication.shared.windows
+                .first(where: { $0.isVisible && $0.styleMask.contains(.titled) })?
+                .makeKeyAndOrderFront(nil)
         }
     }
 }
@@ -281,7 +297,7 @@ struct SettingsView: View {
                     .resizable().frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("LumaDeck 偏好设置").font(.title2.bold())
-                    Text("光屏管家 · 版本 0.1.9").foregroundStyle(.secondary)
+                    Text("光屏管家 · 版本 0.1.10").foregroundStyle(.secondary)
                 }
                 Spacer()
             }
@@ -318,7 +334,15 @@ struct SettingsView: View {
         }
         .padding(22)
         .frame(width: 500, height: 260)
-        .onAppear { loginItem.refresh() }
+        .onAppear {
+            loginItem.refresh()
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            DispatchQueue.main.async {
+                NSApplication.shared.windows
+                    .first(where: { $0.isVisible && $0.styleMask.contains(.titled) })?
+                    .makeKeyAndOrderFront(nil)
+            }
+        }
         .alert("无法更新开机自启动", isPresented: Binding(
             get: { loginItem.errorMessage != nil },
             set: { if !$0 { loginItem.errorMessage = nil } }
