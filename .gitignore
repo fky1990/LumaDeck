@@ -1,6 +1,8 @@
 .DS_Store
 .build/
 outputs/
+work/
+Resources/AppIcon.iconset/
 *.xcuserstate
 xcuserdata/
 .swiftpm/xcode/package.xcworkspace/xcuserdata/

@@ -13,7 +13,8 @@ let package = Package(
             path: "Sources/LumaDeck",
             linkerSettings: [
                 .linkedFramework("AppKit"),
-                .linkedFramework("CoreGraphics")
+                .linkedFramework("CoreGraphics"),
+                .linkedFramework("ServiceManagement")
             ]
         )
     ],

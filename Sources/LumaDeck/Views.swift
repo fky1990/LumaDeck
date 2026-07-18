@@ -3,7 +3,6 @@ import CoreGraphics
 
 struct DisplayPopoverView: View {
     @EnvironmentObject private var manager: DisplayManager
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         ScrollView {
@@ -14,7 +13,12 @@ struct DisplayPopoverView: View {
                         Text("光屏管家").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button { manager.refresh() } label: { Image(systemName: "arrow.clockwise") }
+                    Button { manager.refresh() } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(width: 30, height: 30)
+                            .background(.quaternary, in: Circle())
+                    }
                         .buttonStyle(.plain)
                         .help("刷新显示器")
                 }
@@ -29,19 +33,30 @@ struct DisplayPopoverView: View {
                     }
                 }
 
-                Divider()
-                HStack {
-                    Button("设置") { openSettings() }
-                    Spacer()
-                    Button("退出 LumaDeck") { NSApplication.shared.terminate(nil) }
+                HStack(spacing: 10) {
+                    SettingsLink {
+                        Label("偏好设置", systemImage: "gearshape.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { manager.quitAfterRestoringDisplays() } label: {
+                        Label("退出", systemImage: "power")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .foregroundStyle(.red)
+                            .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.top, 2)
             }
             .padding(14)
         }
-        .frame(width: 390, height: min(720, CGFloat(170 + manager.displays.count * 300)))
+        .frame(width: 410, height: min(760, CGFloat(170 + manager.displays.count * 390)))
         .alert("LumaDeck", isPresented: Binding(
             get: { manager.lastError != nil },
             set: { if !$0 { manager.lastError = nil } }
@@ -54,7 +69,6 @@ struct DisplayPopoverView: View {
 private struct DisplayCard: View {
     @EnvironmentObject private var manager: DisplayManager
     let display: DisplayDevice
-    @State private var showingModes = false
 
     private var brightness: Binding<Double> {
         Binding(get: { display.brightness }, set: { manager.setBrightness($0, for: display.id) })
@@ -76,7 +90,7 @@ private struct DisplayCard: View {
                 }
                 Spacer()
                 Toggle("", isOn: enabled).labelsHidden().toggleStyle(.switch)
-                    .help("单屏软关闭/开启")
+                    .help("停用/启用这台显示器")
             }
 
             VStack(spacing: 5) {
@@ -91,23 +105,7 @@ private struct DisplayCard: View {
                 }
             }
 
-            Button { showingModes.toggle() } label: {
-                HStack {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").frame(width: 24)
-                    Text("分辨率与刷新率")
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(display.currentResolution)
-                        Text(display.currentRefreshRate).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showingModes, arrowEdge: .trailing) {
-                ModePicker(display: display, isPresented: $showingModes)
-            }
+            DisplayModeSliders(display: display)
 
             HStack {
                 Label(display.isBuiltIn ? "内建显示屏" : "外接显示器", systemImage: "info.circle")
@@ -126,60 +124,206 @@ private struct DisplayCard: View {
     }
 }
 
-private struct ModePicker: View {
+private struct ResolutionGroup: Identifiable {
+    let id: String
+    let label: String
+    let modes: [DisplayModeOption]
+}
+
+private struct DisplayModeSliders: View {
     @EnvironmentObject private var manager: DisplayManager
     let display: DisplayDevice
-    @Binding var isPresented: Bool
+    @State private var resolutionIndex: Int
+    @State private var refreshIndex: Int
+
+    init(display: DisplayDevice) {
+        self.display = display
+        let groups = Self.makeResolutionGroups(display.modes)
+        let selectedResolution = groups.firstIndex(where: {
+            $0.modes.contains(where: { $0.id == display.currentMode?.id })
+        }) ?? 0
+        _resolutionIndex = State(initialValue: selectedResolution)
+        let modes = groups.indices.contains(selectedResolution) ? groups[selectedResolution].modes : []
+        _refreshIndex = State(initialValue: modes.firstIndex(where: { $0.id == display.currentMode?.id }) ?? 0)
+    }
+
+    private var groups: [ResolutionGroup] { Self.makeResolutionGroups(display.modes) }
+
+    private var selectedGroup: ResolutionGroup? {
+        groups.indices.contains(resolutionIndex) ? groups[resolutionIndex] : groups.first
+    }
+
+    private var refreshModes: [DisplayModeOption] { selectedGroup?.modes ?? [] }
+
+    private var resolutionLabel: String { selectedGroup?.label ?? display.currentResolution }
+
+    private var refreshLabel: String {
+        guard refreshModes.indices.contains(refreshIndex) else { return display.currentRefreshRate }
+        return refreshModes[refreshIndex].refreshLabel
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("显示模式").font(.headline).padding(.horizontal, 10)
-            ScrollView {
-                LazyVStack(spacing: 3) {
-                    ForEach(display.modes) { option in
-                        Button {
-                            manager.applyMode(option, to: display.id)
-                            isPresented = false
-                        } label: {
-                            HStack {
-                                Image(systemName: option.id == display.currentMode?.id ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(option.id == display.currentMode?.id ? Color.accentColor : .secondary)
-                                Text(option.resolutionLabel)
-                                if option.isHiDPI { Text("HiDPI").font(.caption2).foregroundStyle(.blue) }
-                                Spacer()
-                                Text(option.refreshLabel).foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 10).padding(.vertical, 7)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+        VStack(spacing: 12) {
+            modeSlider(
+                title: "分辨率",
+                value: resolutionLabel,
+                systemImage: "arrow.up.left.and.arrow.down.right",
+                index: resolutionBinding,
+                count: groups.count,
+                onCommit: applyResolution
+            )
+            modeSlider(
+                title: "刷新率",
+                value: refreshLabel,
+                systemImage: "gauge.with.dots.needle.67percent",
+                index: refreshBinding,
+                count: refreshModes.count,
+                onCommit: applyRefreshRate
+            )
+        }
+        .disabled(display.isBlackout || display.modes.isEmpty)
+        .onChange(of: display.currentMode?.id) { _, _ in syncFromDisplay() }
+    }
+
+    private func modeSlider(
+        title: String,
+        value: String,
+        systemImage: String,
+        index: Binding<Double>,
+        count: Int,
+        onCommit: @escaping () -> Void
+    ) -> some View {
+        VStack(spacing: 5) {
+            HStack {
+                Label(title, systemImage: systemImage).foregroundStyle(.secondary)
+                Spacer()
+                Text(value).font(.system(.body, design: .rounded)).foregroundStyle(.secondary)
+            }
+            HStack {
+                Image(systemName: systemImage).foregroundStyle(.tertiary).frame(width: 24)
+                Slider(
+                    value: index,
+                    in: 0...Double(max(1, count - 1)),
+                    step: 1,
+                    onEditingChanged: { if !$0 { onCommit() } }
+                )
+                .disabled(count < 2)
             }
         }
-        .padding(.vertical, 12)
-        .frame(width: 310, height: 380)
+    }
+
+    private var resolutionBinding: Binding<Double> {
+        Binding(
+            get: { Double(resolutionIndex) },
+            set: { value in
+                resolutionIndex = min(max(0, Int(value.rounded())), max(0, groups.count - 1))
+                refreshIndex = closestRefreshIndex(in: refreshModes, to: display.currentMode?.refreshRate ?? 0)
+            }
+        )
+    }
+
+    private var refreshBinding: Binding<Double> {
+        Binding(
+            get: { Double(refreshIndex) },
+            set: { refreshIndex = min(max(0, Int($0.rounded())), max(0, refreshModes.count - 1)) }
+        )
+    }
+
+    private func applyResolution() {
+        guard let group = selectedGroup, !group.modes.isEmpty else { return }
+        let currentRate = display.currentMode?.refreshRate ?? 0
+        let option = group.modes.min(by: { abs($0.refreshRate - currentRate) < abs($1.refreshRate - currentRate) })!
+        manager.applyMode(option, to: display.id)
+    }
+
+    private func applyRefreshRate() {
+        guard refreshModes.indices.contains(refreshIndex) else { return }
+        manager.applyMode(refreshModes[refreshIndex], to: display.id)
+    }
+
+    private func syncFromDisplay() {
+        guard let current = display.currentMode else { return }
+        if let groupIndex = groups.firstIndex(where: { group in group.modes.contains(where: { $0.id == current.id }) }) {
+            resolutionIndex = groupIndex
+            refreshIndex = groups[groupIndex].modes.firstIndex(where: { $0.id == current.id }) ?? 0
+        }
+    }
+
+    private func closestRefreshIndex(in modes: [DisplayModeOption], to rate: Double) -> Int {
+        modes.indices.min(by: { abs(modes[$0].refreshRate - rate) < abs(modes[$1].refreshRate - rate) }) ?? 0
+    }
+
+    private static func makeResolutionGroups(_ modes: [DisplayModeOption]) -> [ResolutionGroup] {
+        var order: [String] = []
+        var grouped: [String: [DisplayModeOption]] = [:]
+        for mode in modes {
+            let key = "\(mode.width)x\(mode.height)-\(mode.pixelWidth)x\(mode.pixelHeight)"
+            if grouped[key] == nil { order.append(key) }
+            grouped[key, default: []].append(mode)
+        }
+        return order.compactMap { key in
+            guard let values = grouped[key], let first = values.first else { return nil }
+            let suffix = first.isHiDPI ? " · HiDPI" : ""
+            let uniqueRates = Dictionary(grouping: values, by: { Int(($0.refreshRate * 100).rounded()) })
+                .values.compactMap(\.first).sorted { $0.refreshRate < $1.refreshRate }
+            return ResolutionGroup(id: key, label: first.resolutionLabel + suffix, modes: uniqueRates)
+        }
     }
 }
 
 struct SettingsView: View {
-    @EnvironmentObject private var manager: DisplayManager
+    @StateObject private var loginItem = LoginItemManager()
 
     var body: some View {
-        Form {
-            Section("关于 LumaDeck") {
-                LabeledContent("名称", value: "LumaDeck（光屏管家）")
-                LabeledContent("版本", value: "0.1.0")
+        VStack(spacing: 20) {
+            HStack(spacing: 12) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable().frame(width: 52, height: 52)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("LumaDeck 偏好设置").font(.title2.bold())
+                    Text("光屏管家 · 版本 0.1.9").foregroundStyle(.secondary)
+                }
+                Spacer()
             }
-            Section("控制方式") {
-                Text("亮度优先使用显示器硬件接口；硬件不支持时自动使用无色偏的软件调光遮罩。")
-                Text("显示器开关是单屏软关闭：画面被完全遮黑，但不会切断显示器电源，也不会改变桌面排列。")
+
+            HStack(spacing: 14) {
+                Image(systemName: "power.circle.fill")
+                    .font(.system(size: 28)).foregroundStyle(.blue)
+                    .frame(width: 38)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("登录时自动启动").font(.headline)
+                    Text("登录 macOS 后在菜单栏自动运行 LumaDeck。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { loginItem.isRegistered },
+                    set: { loginItem.setEnabled($0) }
+                ))
+                .labelsHidden().toggleStyle(.switch)
             }
-            Section("提示") {
-                Text("修改分辨率或刷新率时屏幕会短暂闪烁，这是 macOS 切换显示模式的正常现象。")
+            .padding(16)
+            .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: 14))
+
+            if loginItem.requiresApproval {
+                HStack {
+                    Label("需要在系统设置中批准登录项", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Button("打开系统设置") { loginItem.openLoginItemSettings() }
+                }
             }
+
+            Spacer()
         }
-        .formStyle(.grouped)
-        .frame(width: 520, height: 390)
+        .padding(22)
+        .frame(width: 500, height: 260)
+        .onAppear { loginItem.refresh() }
+        .alert("无法更新开机自启动", isPresented: Binding(
+            get: { loginItem.errorMessage != nil },
+            set: { if !$0 { loginItem.errorMessage = nil } }
+        )) { Button("好") { loginItem.errorMessage = nil } } message: {
+            Text(loginItem.errorMessage ?? "")
+        }
     }
 }
