@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Show toolchain
         run: swift --version
@@ -29,7 +29,7 @@ jobs:
         run: ./scripts/package-release.sh release
 
       - name: Upload unsigned test artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: LumaDeck-unsigned-${{ github.sha }}
           path: |
