@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a focused improvement for LumaDeck
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What display-management problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: api
+    attributes:
+      label: Does this require undocumented macOS behavior?
+      options:
+        - No / public API is available
+        - Unsure
+        - Yes / no public API found
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Relevant hardware
+      description: Include Mac, monitor, cable, or dock details when relevant.

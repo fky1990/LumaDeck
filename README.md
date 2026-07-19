@@ -1,33 +1,84 @@
-# LumaDeck（光屏管家）
+# LumaDeck
 
-LumaDeck 是一个原生 macOS 菜单栏显示器管理应用，面向 macOS 27 开发，同时兼容 macOS 14 及以上版本。
+<p align="center">
+  <img src="Resources/LumaDeckIcon.png" width="160" alt="LumaDeck app icon">
+</p>
 
-## 当前功能
+<p align="center">
+  A native macOS menu bar utility for managing built-in and external displays.
+</p>
 
-- 自动识别内建屏与所有活动的外接显示器
-- 独立亮度控制：硬件亮度可用时直接控制，否则自动使用单屏软件调光
-- 查看并切换每台显示器支持的分辨率、HiDPI 模式与刷新率
-- 使用两条独立滑杆调节分辨率和刷新率，松手后应用更改
-- 将任意活动显示器设为主显示器
-- 停用任意显示器，并由 macOS 自动迁移窗口、Dock 和鼠标指针
-- 停用能力不可用时自动回退到兼容遮罩模式
-- 防误锁保护：始终保留至少一块可见屏幕，拔插后自动恢复安全状态
-- 启动时恢复上次停用的屏幕，并识别仍连接但处于离线状态的显示器
-- 在显示器接入、拔出或排列变化时自动刷新
-- 包含专为多屏与亮度管理设计的原生 macOS 应用图标
-- 支持通过精简偏好设置启用登录时自动启动
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="LICENSE">MIT License</a> ·
+  <a href="PRIVACY.md">Privacy</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-## 构建和运行
+> [!WARNING]
+> The full GitHub build uses dynamically resolved, undocumented macOS APIs for hardware brightness and true display disabling. These features can break after a macOS update and are not eligible for the Mac App Store. Read [Private APIs and compatibility](docs/PRIVATE_APIS.md) before installing or distributing the app.
+
+## Features
+
+- Detect built-in and connected external displays.
+- Adjust each display independently.
+- Use hardware brightness when supported, with per-display software dimming as a fallback.
+- Change HiDPI resolution and refresh rate with separate sliders.
+- Hide non-HiDPI modes by default, with a compatibility fallback when none exist.
+- Set any active display as the primary display.
+- Disable a display while keeping at least one visible screen available.
+- Restore displays disabled by LumaDeck after an interrupted session.
+- Refresh automatically when the display topology changes.
+- Start automatically at login using `SMAppService`.
+- Run entirely from the macOS menu bar.
+
+## Requirements
+
+- macOS 14 or later
+- Swift 6 toolchain / Xcode 16 or later
+- Apple silicon or Intel Mac
+
+The app is developed and tested primarily on macOS 27. Display control behavior can differ by Mac model, GPU, cable, dock, and monitor firmware.
+
+## Build and run
 
 ```bash
-./scripts/build-app.sh
+git clone https://github.com/fky1990/LumaDeck.git
+cd LumaDeck
+./scripts/build-app.sh release
 open outputs/LumaDeck.app
 ```
 
-也可以在 Xcode 中直接打开 `Package.swift` 进行开发和调试。
+You can also open `Package.swift` directly in Xcode.
 
-## 技术限制
+The local build is ad-hoc signed. macOS may ask for confirmation the first time you open it. Official GitHub Releases should be Developer ID signed and notarized before they are presented as production downloads.
 
-macOS 没有提供按显示器物理断电的公共 API。LumaDeck 使用系统运行时显示配置能力把屏幕移出活动桌面，并记录由自己停用的显示器。正常退出前会主动恢复全部屏幕；异常退出后，下次启动会自动恢复遗留的关闭状态。该能力不可用时使用全屏遮罩回退。部分外接显示器不公开硬件亮度控制，LumaDeck 会自动回退到软件调光。
+## Release package
 
-应用通过 CoreGraphics 的公开显示模式 API 切换分辨率与刷新率。内建屏硬件亮度采用运行时加载的 DisplayServices 能力；该能力不可用时不会导致应用崩溃。
+```bash
+./scripts/package-release.sh release
+```
+
+The script builds the app, validates its signature, creates a versioned ZIP in `outputs/`, and writes a SHA-256 checksum.
+
+## How it works
+
+LumaDeck is a SwiftUI menu bar app backed by AppKit and CoreGraphics. Public Quartz Display Services APIs handle discovery, display modes, refresh rates, and display arrangement. A borderless per-screen AppKit window provides software dimming.
+
+The full build additionally resolves `DisplayServices` and `CGS` symbols at runtime for capabilities that Apple does not expose through public APIs. See [Architecture](docs/ARCHITECTURE.md) and [Private APIs](docs/PRIVATE_APIS.md).
+
+## Mac App Store
+
+This repository is **not App Store ready as-is**. An App Store build must enable App Sandbox and remove hardware brightness and true display disabling. Resolution, refresh rate, display discovery, primary-display selection, software dimming, and login launch can remain. See [Mac App Store compatibility](docs/APP_STORE.md).
+
+## Privacy
+
+LumaDeck works locally, contains no analytics or advertising SDKs, and does not transmit display information. See [PRIVACY.md](PRIVACY.md).
+
+## Contributing
+
+Bug reports and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), use the issue templates, and include your Mac model, macOS version, connection type, and monitor model when reporting display-specific problems.
+
+## License
+
+LumaDeck is available under the [MIT License](LICENSE). The license does not grant rights to Apple private APIs and does not guarantee compatibility with future macOS versions.

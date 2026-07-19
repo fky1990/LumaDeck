@@ -1,0 +1,39 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS build
+    runs-on: macos-14
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build debug configuration
+        run: swift build
+
+      - name: Build and package release
+        run: ./scripts/package-release.sh release
+
+      - name: Upload unsigned test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumaDeck-unsigned-${{ github.sha }}
+          path: |
+            outputs/LumaDeck-macOS-*.zip
+            outputs/LumaDeck-macOS-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
