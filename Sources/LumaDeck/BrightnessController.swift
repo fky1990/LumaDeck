@@ -2,6 +2,7 @@ import CoreGraphics
 import Darwin
 
 final class BrightnessController {
+    private static let appleVendorID: UInt32 = 0x0610
     private typealias GetBrightness = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
     private typealias SetBrightness = @convention(c) (CGDirectDisplayID, Float) -> Int32
 
@@ -27,15 +28,24 @@ final class BrightnessController {
 
     deinit { if let handle { dlclose(handle) } }
 
+    /// DisplayServices is dependable for the built-in panel and Apple displays.
+    /// Some third-party monitors return success without changing their backlight,
+    /// so those displays deliberately use LumaDeck's visual dimming fallback.
+    func supportsReliableHardwareControl(displayID: CGDirectDisplayID) -> Bool {
+        guard getter != nil, setter != nil else { return false }
+        return CGDisplayIsBuiltin(displayID) != 0
+            || CGDisplayVendorNumber(displayID) == Self.appleVendorID
+    }
+
     func getBrightness(displayID: CGDirectDisplayID) -> Float? {
-        guard let getter else { return nil }
+        guard supportsReliableHardwareControl(displayID: displayID), let getter else { return nil }
         var value: Float = 1
         return getter(displayID, &value) == 0 ? value : nil
     }
 
     @discardableResult
     func setBrightness(_ value: Float, displayID: CGDirectDisplayID) -> Bool {
-        guard let setter else { return false }
+        guard supportsReliableHardwareControl(displayID: displayID), let setter else { return false }
         return setter(displayID, min(1, max(0, value))) == 0
     }
 }

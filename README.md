@@ -27,6 +27,7 @@
 - Hide non-HiDPI modes by default, with a compatibility fallback when none exist.
 - Set any active display as the primary display.
 - Disable a display while keeping at least one visible screen available.
+- Remember display on/off preferences for each external-monitor setup.
 - Restore displays disabled by LumaDeck after an interrupted session.
 - Refresh automatically when the display topology changes.
 - Start automatically at login using `SMAppService`.

@@ -146,11 +146,21 @@ private struct ResolutionGroup: Identifiable {
     let modes: [DisplayModeOption]
 }
 
+@MainActor
+private final class ModeSliderSelection: ObservableObject {
+    @Published var resolutionIndex: Int
+    @Published var refreshIndex: Int
+
+    init(resolutionIndex: Int, refreshIndex: Int) {
+        self.resolutionIndex = resolutionIndex
+        self.refreshIndex = refreshIndex
+    }
+}
+
 private struct DisplayModeSliders: View {
     @EnvironmentObject private var manager: DisplayManager
     let display: DisplayDevice
-    @State private var resolutionIndex: Int
-    @State private var refreshIndex: Int
+    @StateObject private var selection: ModeSliderSelection
 
     init(display: DisplayDevice) {
         self.display = display
@@ -158,15 +168,17 @@ private struct DisplayModeSliders: View {
         let selectedResolution = groups.firstIndex(where: {
             $0.modes.contains(where: { $0.id == display.currentMode?.id })
         }) ?? 0
-        _resolutionIndex = State(initialValue: selectedResolution)
         let modes = groups.indices.contains(selectedResolution) ? groups[selectedResolution].modes : []
-        _refreshIndex = State(initialValue: modes.firstIndex(where: { $0.id == display.currentMode?.id }) ?? 0)
+        _selection = StateObject(wrappedValue: ModeSliderSelection(
+            resolutionIndex: selectedResolution,
+            refreshIndex: modes.firstIndex(where: { $0.id == display.currentMode?.id }) ?? 0
+        ))
     }
 
     private var groups: [ResolutionGroup] { Self.makeResolutionGroups(display.modes) }
 
     private var selectedGroup: ResolutionGroup? {
-        groups.indices.contains(resolutionIndex) ? groups[resolutionIndex] : groups.first
+        groups.indices.contains(selection.resolutionIndex) ? groups[selection.resolutionIndex] : groups.first
     }
 
     private var refreshModes: [DisplayModeOption] { selectedGroup?.modes ?? [] }
@@ -174,8 +186,8 @@ private struct DisplayModeSliders: View {
     private var resolutionLabel: String { selectedGroup?.label ?? display.currentResolution }
 
     private var refreshLabel: String {
-        guard refreshModes.indices.contains(refreshIndex) else { return display.currentRefreshRate }
-        return refreshModes[refreshIndex].refreshLabel
+        guard refreshModes.indices.contains(selection.refreshIndex) else { return display.currentRefreshRate }
+        return refreshModes[selection.refreshIndex].refreshLabel
     }
 
     var body: some View {
@@ -230,18 +242,18 @@ private struct DisplayModeSliders: View {
 
     private var resolutionBinding: Binding<Double> {
         Binding(
-            get: { Double(resolutionIndex) },
+            get: { Double(selection.resolutionIndex) },
             set: { value in
-                resolutionIndex = min(max(0, Int(value.rounded())), max(0, groups.count - 1))
-                refreshIndex = closestRefreshIndex(in: refreshModes, to: display.currentMode?.refreshRate ?? 0)
+                selection.resolutionIndex = min(max(0, Int(value.rounded())), max(0, groups.count - 1))
+                selection.refreshIndex = closestRefreshIndex(in: refreshModes, to: display.currentMode?.refreshRate ?? 0)
             }
         )
     }
 
     private var refreshBinding: Binding<Double> {
         Binding(
-            get: { Double(refreshIndex) },
-            set: { refreshIndex = min(max(0, Int($0.rounded())), max(0, refreshModes.count - 1)) }
+            get: { Double(selection.refreshIndex) },
+            set: { selection.refreshIndex = min(max(0, Int($0.rounded())), max(0, refreshModes.count - 1)) }
         )
     }
 
@@ -253,15 +265,15 @@ private struct DisplayModeSliders: View {
     }
 
     private func applyRefreshRate() {
-        guard refreshModes.indices.contains(refreshIndex) else { return }
-        manager.applyMode(refreshModes[refreshIndex], to: display.id)
+        guard refreshModes.indices.contains(selection.refreshIndex) else { return }
+        manager.applyMode(refreshModes[selection.refreshIndex], to: display.id)
     }
 
     private func syncFromDisplay() {
         guard let current = display.currentMode else { return }
         if let groupIndex = groups.firstIndex(where: { group in group.modes.contains(where: { $0.id == current.id }) }) {
-            resolutionIndex = groupIndex
-            refreshIndex = groups[groupIndex].modes.firstIndex(where: { $0.id == current.id }) ?? 0
+            selection.resolutionIndex = groupIndex
+            selection.refreshIndex = groups[groupIndex].modes.firstIndex(where: { $0.id == current.id }) ?? 0
         }
     }
 
@@ -288,6 +300,7 @@ private struct DisplayModeSliders: View {
 }
 
 struct SettingsView: View {
+    @EnvironmentObject private var manager: DisplayManager
     @StateObject private var loginItem = LoginItemManager()
 
     var body: some View {
@@ -297,7 +310,7 @@ struct SettingsView: View {
                     .resizable().frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("LumaDeck 偏好设置").font(.title2.bold())
-                    Text("光屏管家 · 版本 0.1.10").foregroundStyle(.secondary)
+                    Text("光屏管家 · 版本 0.1.12").foregroundStyle(.secondary)
                 }
                 Spacer()
             }
@@ -321,6 +334,22 @@ struct SettingsView: View {
             .padding(16)
             .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: 14))
 
+            HStack(spacing: 14) {
+                Image(systemName: "display.2")
+                    .font(.system(size: 26)).foregroundStyle(.purple)
+                    .frame(width: 38)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("记住显示器开关状态").font(.headline)
+                    Text("按外接显示器组合，自动恢复上一次的屏幕开关习惯。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: $manager.remembersDisplayConfigurations)
+                    .labelsHidden().toggleStyle(.switch)
+            }
+            .padding(16)
+            .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: 14))
+
             if loginItem.requiresApproval {
                 HStack {
                     Label("需要在系统设置中批准登录项", systemImage: "exclamationmark.triangle.fill")
@@ -333,7 +362,7 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(22)
-        .frame(width: 500, height: 260)
+        .frame(width: 500, height: 350)
         .onAppear {
             loginItem.refresh()
             NSApplication.shared.activate(ignoringOtherApps: true)
